@@ -13,6 +13,7 @@ func NewRouter() http.Handler {
 
 	// API endpoints for HTTP server
 	router.HandleFunc("/", handler.RootHandler)
+	router.HandleFunc("/add-todo", handler.AddTodo)
 
 	return router
 }
