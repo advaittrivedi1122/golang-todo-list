@@ -14,6 +14,8 @@ func NewRouter() http.Handler {
 	// API endpoints for HTTP server
 	router.HandleFunc("/", handler.RootHandler)
 	router.HandleFunc("/add-todo", handler.AddTodo)
+	router.HandleFunc("/get-user-todo-by-id", handler.GetUserTodoById)
+	router.HandleFunc("/get-user-todos", handler.GetUserTodos)
 
 	return router
 }

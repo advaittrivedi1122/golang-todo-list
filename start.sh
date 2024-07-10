@@ -14,7 +14,7 @@ KEYSPACE=todolist
 
 echo -e "\nCreating Keyspace for ScyllaDb"
 
-cqlsh $HOST $PORT -e "CREATE KEYSPACE IF NOT EXISTS $KEYSPACE WITH REPLICATION = {'class':'NetworkTopologyStrategy', 'replication_factor':1}" > /dev/null 2>&1
+sudo docker exec -it scylla-db cqlsh $HOST $PORT -e "CREATE KEYSPACE IF NOT EXISTS $KEYSPACE WITH REPLICATION = {'class':'NetworkTopologyStrategy', 'replication_factor':1}" > /dev/null 2>&1
 
 echo -e "\nKeyspace created successfully"
 

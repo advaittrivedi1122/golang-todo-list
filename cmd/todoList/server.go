@@ -19,7 +19,7 @@ func main() {
 	router := router.NewRouter()
 	port := env.PORT
 	addr := fmt.Sprintf(":%d", port)
-	fmt.Printf("Server listening on http://localhost%s\n", addr)
+	fmt.Printf("\n\nServer listening on http://localhost%s\n", addr)
 
 	err := http.ListenAndServe(addr,router)
 	if err != nil {

@@ -147,6 +147,68 @@ func IncrementUserTodosCount(userId int) error {
 	return nil
 }
 
+func GetUserTodoById(userId int, id int) (todo types.Todo, err error) {
+	env := env.GetEnv()
+
+	query := fmt.Sprintf("SELECT id, user_id, title, description, status, created, updated FROM %v.user_todos WHERE user_id = %v AND id = %v ALLOW FILTERING", env.DB_KEYSPACE, userId, id)
+
+	if err := Session.Query(query).Consistency(gocql.One).Scan(&todo.TodoId, &todo.UserId, &todo.Title, &todo.Description, &todo.Status, &todo.Created, &todo.Updated); err != nil {
+		return todo, err
+	}
+	
+	return todo, nil
+}
+
+func GetUserTodos(req types.GetUserTodosRequest) (todos []types.Todo, err error) {
+	env := env.GetEnv()
+	var query string
+
+	if (req.Limit > 0) {
+		// With Pagination
+		if (req.Filter == "" && req.Sort == "") {
+			// Without filter and sort
+			query = fmt.Sprintf("SELECT id, user_id, title, description, status, created, updated FROM %v.user_todos WHERE user_id = %v AND id > %v LIMIT %v ALLOW FILTERING", env.DB_KEYSPACE, req.UserId, req.Offset, req.Limit)
+		} else if (req.Filter != "" && req.Sort == "") {
+			// With filter, without sort
+			query = fmt.Sprintf("SELECT id, user_id, title, description, status, created, updated FROM %v.user_todos WHERE user_id = %v AND status = '%v' AND id > %v LIMIT %v ALLOW FILTERING", env.DB_KEYSPACE, req.UserId, req.Filter, req.Offset, req.Limit)
+		} else if (req.Filter == "" && req.Sort != "") {
+			// Without filter, with sort (only sort if desc)
+			query = fmt.Sprintf("SELECT id, user_id, title, description, status, created, updated FROM %v.user_todos WHERE user_id = %v AND id < %v ORDER BY created DESC LIMIT %v ALLOW FILTERING", env.DB_KEYSPACE, req.UserId, req.Offset, req.Limit)
+		} else if (req.Filter != "" && req.Sort != "") {
+			// With filter and sort
+			query = fmt.Sprintf("SELECT id, user_id, title, description, status, created, updated FROM %v.user_todos WHERE user_id = %v AND status = '%v' AND id < %v ORDER BY created DESC LIMIT %v ALLOW FILTERING", env.DB_KEYSPACE, req.UserId, req.Filter, req.Offset, req.Limit)
+		}
+	} else {
+		// Without Pagination
+		if (req.Filter == "" && req.Sort == "") {
+			// Without filter and sort
+			query = fmt.Sprintf("SELECT id, user_id, title, description, status, created, updated FROM %v.user_todos WHERE user_id = %v ALLOW FILTERING", env.DB_KEYSPACE, req.UserId)
+		} else if (req.Filter != "" && req.Sort == "") {
+			// With filter, without sort
+			query = fmt.Sprintf("SELECT id, user_id, title, description, status, created, updated FROM %v.user_todos WHERE user_id = %v AND status = '%v' ALLOW FILTERING", env.DB_KEYSPACE, req.UserId, req.Filter)
+		} else if (req.Filter == "" && req.Sort != "") {
+			// Without filter, with sort (only sort if desc)
+			query = fmt.Sprintf("SELECT id, user_id, title, description, status, created, updated FROM %v.user_todos WHERE user_id = %v ORDER BY created DESC ALLOW FILTERING", env.DB_KEYSPACE, req.UserId)
+		} else if (req.Filter != "" && req.Sort != "") {
+			// With filter and sort
+			query = fmt.Sprintf("SELECT id, user_id, title, description, status, created, updated FROM %v.user_todos WHERE user_id = %v AND status = '%v' ORDER BY created DESC ALLOW FILTERING", env.DB_KEYSPACE, req.UserId, req.Filter)
+		}
+	}
+
+	iter := Session.Query(query).Iter()
+	
+	var todo types.Todo
+	for iter.Scan(&todo.TodoId, &todo.UserId, &todo.Title, &todo.Description, &todo.Status, &todo.Created, &todo.Updated) {
+		todos = append(todos, todo)
+	}
+
+	if err := iter.Close(); err != nil {
+		return todos, err
+	}
+	
+	return todos, nil
+}
+
 func init() {
 	// Load env file & setup env struct for easier access
 	err := godotenv.Load(".env")
