@@ -15,8 +15,10 @@ A Todos List - CRUD API with pagination.
 #### -> Start Go server + ScyllaDb
 `sudo bash start.sh`
 
-#### -> Stop ScyllaDb
+#### -> Stop ScyllaDb (Run when you want to close the app)
 `sudo bash stop.sh`
+
+(Run at the end, when you want to close the app removing all the data that was created and stored in ScyllaDb)
 
 <hr>
 
