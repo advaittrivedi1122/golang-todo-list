@@ -105,3 +105,145 @@ func GetUserTodos(w http.ResponseWriter, r *http.Request) {
 	resBytes, _ := json.Marshal(res)
 	w.Write(resBytes)
 }
+
+func UpdateUserTodoById(w http.ResponseWriter, r *http.Request) {
+	var req types.UpdateUserTodoByIdRequest
+	var res types.UpdateUserTodoByIdResult
+	json.NewDecoder(r.Body).Decode(&req)
+	w.Header().Add("Content-type", "application/json")
+
+	if (req.UserId <= 0) {
+		res = types.UpdateUserTodoByIdResult{
+			Success: false,
+			Error: "user_id missing",
+		}
+		resBytes, _ := json.Marshal(res)
+		w.Write(resBytes)
+		return
+	}
+	if (req.TodoId <= 0) {
+		res = types.UpdateUserTodoByIdResult{
+			Success: false,
+			Error: "id missing",
+		}
+		resBytes, _ := json.Marshal(res)
+		w.Write(resBytes)
+		return
+	}
+
+	if err := database.UpdateUserTodoById(req); err != nil {
+		log.Printf("Unable to Update User Todo : %v", err)
+		res = types.UpdateUserTodoByIdResult{
+			Success: false,
+			Error: err.Error(),
+		}
+		resBytes, _ := json.Marshal(res)
+		w.Write(resBytes)
+		return
+	}
+
+	res = types.UpdateUserTodoByIdResult{
+		Success: true,
+	}
+	resBytes, _ := json.Marshal(res)
+	w.Write(resBytes)
+}
+
+func DeleteUserTodoById(w http.ResponseWriter, r *http.Request) {
+	var req types.DeleteUserTodoByIdRequest
+	var res types.DeleteUserTodoByIdResult
+	json.NewDecoder(r.Body).Decode(&req)
+	w.Header().Add("Content-type", "application/json")
+
+	if (req.UserId <= 0) {
+		res = types.DeleteUserTodoByIdResult{
+			Success: false,
+			Error: "user_id missing",
+		}
+		resBytes, _ := json.Marshal(res)
+		w.Write(resBytes)
+		return
+	}
+	if (req.TodoId <= 0) {
+		res = types.DeleteUserTodoByIdResult{
+			Success: false,
+			Error: "id missing",
+		}
+		resBytes, _ := json.Marshal(res)
+		w.Write(resBytes)
+		return
+	}
+
+	if err := database.DeleteUserTodoById(req); err != nil {
+		log.Printf("Unable to Delete User Todo : %v", err)
+		res = types.DeleteUserTodoByIdResult{
+			Success: false,
+			Error: err.Error(),
+		}
+		resBytes, _ := json.Marshal(res)
+		w.Write(resBytes)
+		return
+	}
+
+	if err := database.DecrementUserTodosCount(req.UserId); err != nil {
+		log.Printf("Unable to decrement user todos count : %v", err)
+		res = types.DeleteUserTodoByIdResult{
+			Success: false,
+			Error: err.Error(),
+		}
+		resBytes, _ := json.Marshal(res)
+		w.Write(resBytes)
+		return
+	}
+
+	res = types.DeleteUserTodoByIdResult{
+		Success: true,
+	}
+	resBytes, _ := json.Marshal(res)
+	w.Write(resBytes)
+}
+
+func DeleteUserTodos(w http.ResponseWriter, r *http.Request) {
+	var req types.DeleteUserTodosRequest
+	var res types.DeleteUserTodosResult
+	json.NewDecoder(r.Body).Decode(&req)
+	w.Header().Add("Content-type", "application/json")
+
+	if (req.UserId <= 0) {
+		res = types.DeleteUserTodosResult{
+			Success: false,
+			Error: "user_id missing",
+		}
+		resBytes, _ := json.Marshal(res)
+		w.Write(resBytes)
+		return
+	}
+
+	if err := database.DeleteUserTodos(req.UserId); err != nil {
+		log.Printf("Unable to Delete User Todos : %v", err)
+		res = types.DeleteUserTodosResult{
+			Success: false,
+			Error: err.Error(),
+		}
+		resBytes, _ := json.Marshal(res)
+		w.Write(resBytes)
+		return
+	}
+
+	if err := database.ResetUserTodosCount(req.UserId); err != nil {
+		log.Printf("Unable to Delete User Todos : %v", err)
+		res = types.DeleteUserTodosResult{
+			Success: false,
+			Error: err.Error(),
+		}
+		resBytes, _ := json.Marshal(res)
+		w.Write(resBytes)
+		return
+	}
+
+	res = types.DeleteUserTodosResult{
+		Success: true,
+	}
+	resBytes, _ := json.Marshal(res)
+	w.Write(resBytes)
+}

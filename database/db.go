@@ -43,7 +43,7 @@ func Initialise()  {
 		fmt.Println("\n[Table Created successfully] : todos_count")
 	}
 
-	query = fmt.Sprintf("CREATE TABLE IF NOT EXISTS %v.user_todos (id int, user_id INT, title TEXT, description TEXT, status TEXT, created TIMESTAMP, updated TIMESTAMP, PRIMARY KEY(user_id, created)) WITH CLUSTERING ORDER BY (created ASC)", env.DB_KEYSPACE)
+	query = fmt.Sprintf("CREATE TABLE IF NOT EXISTS %v.user_todos (id INT, user_id INT, title TEXT, description TEXT, status TEXT, created TIMESTAMP, updated TIMESTAMP, PRIMARY KEY(user_id, id)) WITH CLUSTERING ORDER BY (id ASC)", env.DB_KEYSPACE)
 	fmt.Printf("\n[Query] : %v\n", query)
 	if err := session.Query(query).Exec(); err != nil {
 		log.Fatalf("Unable to create table todos: %v", err)
@@ -68,33 +68,6 @@ func ExecuteQuery(query string) error {
 	return nil
 }
 
-// Create Todos tables for user if not already created. (User-wise Todos)
-func CreateUserTable(userId int) error  {
-	env := env.GetEnv()
-	count := GetUsersCount()
-	if (userId <= count) {
-		return nil
-	}
-
-	// Only allow next userId
-	if ((userId - count) > 1) {
-		return fmt.Errorf("users count is sequential. Expected user_id %v or less but got %v", count+1, userId)
-	}
-
-	query := fmt.Sprintf("INSERT INTO %v.todos_count (id, count) VALUES (%v, 0)", env.DB_KEYSPACE, userId)
-	if err := ExecuteQuery(query); err != nil {
-		return err
-	}
-
-	query = fmt.Sprintf("CREATE TABLE IF NOT EXISTS %v.user_%v_todos (id int, user_id INT, title TEXT, description TEXT, status TEXT, created TIMESTAMP, updated TIMESTAMP, PRIMARY KEY(user_id, created)) WITH CLUSTERING ORDER BY (created ASC)", env.DB_KEYSPACE, userId)
-	if err := ExecuteQuery(query); err != nil {
-		return err
-	}
-
-	UsersCount += 1
-	return nil
-}
-
 // Inserts user todos into seperate sorted tables for ASC and DESC filter
 func InsertUserTodo(req types.AddTodoRequest) error {
 	env := env.GetEnv()
@@ -103,6 +76,50 @@ func InsertUserTodo(req types.AddTodoRequest) error {
 	query := fmt.Sprintf(`INSERT INTO %v.user_todos (id, user_id, title, description, status, created, updated) VALUES (%v, %v, '%s', '%s', '%s', toTimestamp(now()), toTimestamp(now()))`, env.DB_KEYSPACE, userTodoId, req.UserId, req.Title, req.Description, req.Status)
 
 	fmt.Printf("\n[Query] : %v\n", query)
+	if err := Session.Query(query).Exec(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func UpdateUserTodoById(req types.UpdateUserTodoByIdRequest) error {
+	env := env.GetEnv()
+	var changes string
+
+	if (req.Title != "") {
+		changes += fmt.Sprintf("title = '%s', ", req.Title)
+	}
+	if (req.Description != "") {
+		changes += fmt.Sprintf("description = '%s', ", req.Description)
+	}
+	if (req.Status != "") {
+		changes += fmt.Sprintf("status = '%s'", req.Status)
+	}
+
+	query := fmt.Sprintf("UPDATE %v.user_todos SET %v, updated = toTimestamp(now()) WHERE user_id = %v AND id = %v", env.DB_KEYSPACE, changes, req.UserId, req.TodoId)
+	if err := Session.Query(query).Exec(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func DeleteUserTodoById(req types.DeleteUserTodoByIdRequest) error {
+	env := env.GetEnv()
+
+	query := fmt.Sprintf("DELETE FROM %v.user_todos WHERE user_id = %v AND id = %v", env.DB_KEYSPACE, req.UserId, req.TodoId)
+	if err := Session.Query(query).Exec(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func DeleteUserTodos(userId int) error {
+	env := env.GetEnv()
+
+	query := fmt.Sprintf("DELETE FROM %v.user_todos WHERE user_id = %v", env.DB_KEYSPACE, userId)
 	if err := Session.Query(query).Exec(); err != nil {
 		return err
 	}
@@ -147,6 +164,36 @@ func IncrementUserTodosCount(userId int) error {
 	return nil
 }
 
+func DecrementUserTodosCount(userId int) error {
+	env := env.GetEnv()
+	userTodosCount := GetUserTodosCount(userId)
+
+	if (userTodosCount <= 0) {
+		return nil
+	}
+	query := fmt.Sprintf("UPDATE %v.todos_count SET count = %v WHERE id = %v", env.DB_KEYSPACE, userTodosCount-1, userId)
+	if err := Session.Query(query).Exec(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func ResetUserTodosCount(userId int) error {
+	env := env.GetEnv()
+	userTodosCount := GetUserTodosCount(userId)
+
+	if (userTodosCount <= 0) {
+		return nil
+	}
+	query := fmt.Sprintf("UPDATE %v.todos_count SET count = 0 WHERE id = %v", env.DB_KEYSPACE, userId)
+	if err := Session.Query(query).Exec(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func GetUserTodoById(userId int, id int) (todo types.Todo, err error) {
 	env := env.GetEnv()
 
@@ -163,43 +210,45 @@ func GetUserTodos(req types.GetUserTodosRequest) (todos []types.Todo, err error)
 	env := env.GetEnv()
 	var query string
 
-	if (req.Limit > 0) {
-		// With Pagination
-		if (req.Filter == "" && req.Sort == "") {
-			// Without filter and sort
-			query = fmt.Sprintf("SELECT id, user_id, title, description, status, created, updated FROM %v.user_todos WHERE user_id = %v AND id > %v LIMIT %v ALLOW FILTERING", env.DB_KEYSPACE, req.UserId, req.Offset, req.Limit)
-		} else if (req.Filter != "" && req.Sort == "") {
-			// With filter, without sort
-			query = fmt.Sprintf("SELECT id, user_id, title, description, status, created, updated FROM %v.user_todos WHERE user_id = %v AND status = '%v' AND id > %v LIMIT %v ALLOW FILTERING", env.DB_KEYSPACE, req.UserId, req.Filter, req.Offset, req.Limit)
-		} else if (req.Filter == "" && req.Sort != "") {
-			// Without filter, with sort (only sort if desc)
-			query = fmt.Sprintf("SELECT id, user_id, title, description, status, created, updated FROM %v.user_todos WHERE user_id = %v AND id < %v ORDER BY created DESC LIMIT %v ALLOW FILTERING", env.DB_KEYSPACE, req.UserId, req.Offset, req.Limit)
-		} else if (req.Filter != "" && req.Sort != "") {
-			// With filter and sort
-			query = fmt.Sprintf("SELECT id, user_id, title, description, status, created, updated FROM %v.user_todos WHERE user_id = %v AND status = '%v' AND id < %v ORDER BY created DESC LIMIT %v ALLOW FILTERING", env.DB_KEYSPACE, req.UserId, req.Filter, req.Offset, req.Limit)
-		}
-	} else {
-		// Without Pagination
-		if (req.Filter == "" && req.Sort == "") {
-			// Without filter and sort
-			query = fmt.Sprintf("SELECT id, user_id, title, description, status, created, updated FROM %v.user_todos WHERE user_id = %v ALLOW FILTERING", env.DB_KEYSPACE, req.UserId)
-		} else if (req.Filter != "" && req.Sort == "") {
-			// With filter, without sort
-			query = fmt.Sprintf("SELECT id, user_id, title, description, status, created, updated FROM %v.user_todos WHERE user_id = %v AND status = '%v' ALLOW FILTERING", env.DB_KEYSPACE, req.UserId, req.Filter)
-		} else if (req.Filter == "" && req.Sort != "") {
-			// Without filter, with sort (only sort if desc)
-			query = fmt.Sprintf("SELECT id, user_id, title, description, status, created, updated FROM %v.user_todos WHERE user_id = %v ORDER BY created DESC ALLOW FILTERING", env.DB_KEYSPACE, req.UserId)
-		} else if (req.Filter != "" && req.Sort != "") {
-			// With filter and sort
-			query = fmt.Sprintf("SELECT id, user_id, title, description, status, created, updated FROM %v.user_todos WHERE user_id = %v AND status = '%v' ORDER BY created DESC ALLOW FILTERING", env.DB_KEYSPACE, req.UserId, req.Filter)
-		}
+	if (req.Filter == "" && req.Sort == "") {
+		// Without filter and sort
+		query = fmt.Sprintf("SELECT id, user_id, title, description, status, created, updated FROM %v.user_todos WHERE user_id = %v ALLOW FILTERING", env.DB_KEYSPACE, req.UserId)
+	} else if (req.Filter != "" && req.Sort == "") {
+		// With filter, without sort
+		query = fmt.Sprintf("SELECT id, user_id, title, description, status, created, updated FROM %v.user_todos WHERE user_id = %v AND status = '%v' ALLOW FILTERING", env.DB_KEYSPACE, req.UserId, req.Filter)
+	} else if (req.Filter == "" && req.Sort != "") {
+		// Without filter, with sort (only sort if desc)
+		query = fmt.Sprintf("SELECT id, user_id, title, description, status, created, updated FROM %v.user_todos WHERE user_id = %v ORDER BY id DESC ALLOW FILTERING", env.DB_KEYSPACE, req.UserId)
+	} else if (req.Filter != "" && req.Sort != "") {
+		// With filter and sort
+		query = fmt.Sprintf("SELECT id, user_id, title, description, status, created, updated FROM %v.user_todos WHERE user_id = %v AND status = '%v' ORDER BY id DESC ALLOW FILTERING", env.DB_KEYSPACE, req.UserId, req.Filter)
 	}
+
+	fmt.Printf("\n\n[Query] : %v\n\n", query)
 
 	iter := Session.Query(query).Iter()
 	
 	var todo types.Todo
-	for iter.Scan(&todo.TodoId, &todo.UserId, &todo.Title, &todo.Description, &todo.Status, &todo.Created, &todo.Updated) {
-		todos = append(todos, todo)
+
+	if (req.Limit > 0) {
+		// Pagination
+		offset := 0
+		for iter.Scan(&todo.TodoId, &todo.UserId, &todo.Title, &todo.Description, &todo.Status, &todo.Created, &todo.Updated) {
+			// Pagination Limit
+			if (len(todos) == req.Limit) {
+				return todos, nil
+			}
+			// Pagination Offset
+			if (offset >= req.Offset) {
+				todos = append(todos, todo)
+			}
+			offset++
+		}
+	} else {
+		// Without Pagination
+		for iter.Scan(&todo.TodoId, &todo.UserId, &todo.Title, &todo.Description, &todo.Status, &todo.Created, &todo.Updated) {
+			todos = append(todos, todo)
+		}
 	}
 
 	if err := iter.Close(); err != nil {
